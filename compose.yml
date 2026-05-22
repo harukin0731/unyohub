@@ -1,0 +1,27 @@
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - "${UNYOHUB_PORT:-8080}:80"
+    environment:
+      UNYOHUB_ADMIN_USER: "${UNYOHUB_ADMIN_USER:-unyohub_admin}"
+    volumes:
+      - unyohub-config:/var/www/html/config
+      - unyohub-data:/var/www/html/data
+      - unyohub-common-dbs:/var/www/html/common_dbs
+      - unyohub-libs-data:/var/www/html/libs_data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  unyohub-config:
+  unyohub-data:
+  unyohub-common-dbs:
+  unyohub-libs-data:
+

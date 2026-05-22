@@ -5,6 +5,36 @@
 
 ## サーバへのインストール
 
+### Dockerで簡単に起動する
+
+ローカルで手早く動作確認したい場合は、リポジトリのルートで以下を実行してください。
+
+1. `docker compose up --build -d`
+2. ブラウザで `http://localhost:8080` を開く
+
+初回起動時にはコンテナ内で `unyohub setup-libs` と `unyohub init-common-dbs` が自動実行され、初期管理者ユーザーも作成されます。  
+初期パスワードは以下で確認できます。
+
+`docker compose exec app cat /var/www/html/libs_data/.initial_admin_password`
+
+管理者ユーザーIDを変更したい場合は、起動前に環境変数 `UNYOHUB_ADMIN_USER` を指定してください。
+
+`UNYOHUB_ADMIN_USER=admin docker compose up --build -d`
+
+コンテナ内の `config` `data` `common_dbs` `libs_data` は Docker named volume として永続化されます。設定やデータを初期状態からやり直したい場合は、以下で volume ごと削除してください。
+
+`docker compose down -v`
+
+コマンドラインツールは以下のように実行できます。
+
+`docker compose exec --user www-data app unyohub --help`
+
+既存の路線系統データをコンテナへコピーする場合は、例えば以下のように `data` ディレクトリを投入できます。
+
+`docker compose cp ./data/. app:/var/www/html/data/`
+
+設定ファイル `config/main.ini` などをリポジトリ側で変更して再ビルドしても、既存 volume が残っている間はコンテナ内の設定は保持されます。リポジトリ同梱の初期設定を反映し直したい場合は `docker compose down -v` の後に再起動してください。
+
 ### アプリ本体の設置と設定
 
 1. nginxのwebサーバを用意します。このwebサーバには、SQLite3モジュールが有効化されたPHP(8.1以降)とPython 3の実行環境が必要です。nginxの設定ファイルは本リポジトリの「documents」フォルダに含まれるサンプルファイルを参考に構成してください。
