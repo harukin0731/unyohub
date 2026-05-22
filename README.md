@@ -12,10 +12,11 @@
 1. `docker compose up --build -d`
 2. ブラウザで `http://localhost:8080` を開く
 
-初回起動時にはコンテナ内で `unyohub setup-libs` と `unyohub init-common-dbs` が自動実行され、初期管理者ユーザーも作成されます。  
+Docker Compose では、`nginx`(Webサーバ), `php`(PHP-FPM), `init`(初期化専用), `worker`(CLI・定期バッチ用) の4サービスに機能分割して起動します。  
+初回起動時には `init` サービスが `unyohub setup-libs` と `unyohub init-common-dbs` を実行し、その完了後に `php` と `worker` が起動します。  
 初期パスワードは以下で確認できます。
 
-`docker compose exec app cat /var/www/html/libs_data/.initial_admin_password`
+`docker compose exec worker cat /var/www/html/libs_data/.initial_admin_password`
 
 管理者ユーザーIDを変更したい場合は、起動前に環境変数 `UNYOHUB_ADMIN_USER` を指定してください。
 
@@ -25,13 +26,21 @@
 
 `docker compose down -v`
 
+起動中の各コンテナは以下で確認できます。
+
+`docker compose ps`
+
 コマンドラインツールは以下のように実行できます。
 
-`docker compose exec --user www-data app unyohub --help`
+`docker compose exec --user www-data worker unyohub --help`
+
+`worker` サービスはデフォルトでは待機状態ですが、環境変数 `UNYOHUB_WORKER_COMMAND` を指定すると専用バッチコンテナとして一定間隔でコマンドを繰り返し実行できます。例えば運用遷移キャッシュを1時間ごとに更新する場合は以下のように起動します。
+
+`UNYOHUB_WORKER_COMMAND='unyohub cache-transitions -s' UNYOHUB_WORKER_INTERVAL=3600 docker compose up -d`
 
 既存の路線系統データをコンテナへコピーする場合は、例えば以下のように `data` ディレクトリを投入できます。
 
-`docker compose cp ./data/. app:/var/www/html/data/`
+`docker compose cp ./data/. worker:/var/www/html/data/`
 
 設定ファイル `config/main.ini` などをリポジトリ側で変更して再ビルドしても、既存 volume が残っている間はコンテナ内の設定は保持されます。リポジトリ同梱の初期設定を反映し直したい場合は `docker compose down -v` の後に再起動してください。
 

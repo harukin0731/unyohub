@@ -1,9 +1,8 @@
 services:
-  app:
+  init:
     build:
       context: .
-    ports:
-      - "${UNYOHUB_PORT:-8080}:80"
+      dockerfile: docker/worker/Dockerfile
     environment:
       UNYOHUB_ADMIN_USER: "${UNYOHUB_ADMIN_USER:-unyohub_admin}"
     volumes:
@@ -11,8 +10,48 @@ services:
       - unyohub-data:/var/www/html/data
       - unyohub-common-dbs:/var/www/html/common_dbs
       - unyohub-libs-data:/var/www/html/libs_data
+    command: ["sh", "/usr/local/bin/unyohub-init"]
+    restart: "no"
+  php:
+    build:
+      context: .
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - unyohub-config:/var/www/html/config
+      - unyohub-data:/var/www/html/data
+      - unyohub-common-dbs:/var/www/html/common_dbs
+      - unyohub-libs-data:/var/www/html/libs_data
+    restart: unless-stopped
+  worker:
+    build:
+      context: .
+      dockerfile: docker/worker/Dockerfile
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      UNYOHUB_WORKER_COMMAND: "${UNYOHUB_WORKER_COMMAND:-}"
+      UNYOHUB_WORKER_INTERVAL: "${UNYOHUB_WORKER_INTERVAL:-3600}"
+    volumes:
+      - unyohub-config:/var/www/html/config
+      - unyohub-data:/var/www/html/data
+      - unyohub-common-dbs:/var/www/html/common_dbs
+      - unyohub-libs-data:/var/www/html/libs_data
+    command: ["sh", "/usr/local/bin/unyohub-worker"]
+    restart: unless-stopped
+  nginx:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    depends_on:
+      php:
+        condition: service_started
+    ports:
+      - "${UNYOHUB_PORT:-8080}:80"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -24,4 +63,3 @@ volumes:
   unyohub-data:
   unyohub-common-dbs:
   unyohub-libs-data:
-

@@ -41,7 +41,3 @@ if ! init_output=$(su -s /bin/sh www-data -c "python3 $UNYOHUB_ROOT/commands/uny
 fi
 
 printf '%s\n' "$init_output"
-
-php-fpm -D
-exec nginx -g 'daemon off;'
-
