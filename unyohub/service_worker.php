@@ -29,36 +29,38 @@ foreach ($app_manifest["icons"] as $icon_info) {
     "/manifest.php?mod=<?php print $manifest_modified; ?>"
 ];
 
-var new_cache_name = "<?php print UNYOHUB_APP_ID."_v".UNYOHUB_VERSION."_".$manifest_modified."_sw2"; ?>";
+var new_cache_name = "<?php print UNYOHUB_APP_ID."_v".UNYOHUB_VERSION."_".$manifest_modified; ?>";
 
 self.addEventListener("install", function (evt) {
-    evt.waitUntil(
-        caches.open(new_cache_name).then(function (cache) {
-            return Promise.all(files_to_cache.map(async function (url) {
-                var response = await fetch(new Request(url, {cache: "no-store"}));
-                if (!response.ok || response.redirected) {
-                    throw new Error("Failed to precache " + url);
-                }
-                if (url === "/") {
-                    var html = await response.clone().text();
-                    if (!html.includes('const UNYOHUB_VERSION = "<?php print UNYOHUB_VERSION; ?>";')) {
-                        throw new Error("HTML release does not match service worker");
-                    }
-                }
-                return [url, response];
-            })).then(function (entries) {
-                return Promise.all(entries.map(function (entry) {
-                    return cache.put(entry[0], entry[1]);
-                }));
-            });
-        })
-    );
+    evt.waitUntil((async function () {
+        // 全ファイルの取得・検証が済んでから保存し、別版のHTMLや認証リダイレクトをキャッシュしない
+        var responses = await Promise.all(files_to_cache.map(async function (url) {
+            var response = await fetch(url, {cache: "no-store"});
+            if (!response.ok || response.redirected) {
+                throw new Error("Failed to precache " + url);
+            }
+            // index.php が埋め込む版番号と一致するか確認する
+            if (url === "/" && !(await response.clone().text()).includes('const UNYOHUB_VERSION = "<?php print UNYOHUB_VERSION; ?>";')) {
+                throw new Error("HTML release does not match service worker");
+            }
+            return response;
+        }));
+        
+        var cache = await caches.open(new_cache_name);
+        await Promise.all(files_to_cache.map(function (url, i) {
+            return cache.put(url, responses[i]);
+        }));
+    })());
 });
 
 self.addEventListener("message", function (evt) {
-    if (evt.data && evt.data.type === "SKIP_WAITING") {
+    if (!evt.data) {
+        return;
+    }
+    
+    if (evt.data.type === "SKIP_WAITING") {
         evt.waitUntil(self.skipWaiting());
-    } else if (evt.data && evt.data.type === "GET_VERSION" && evt.ports[0]) {
+    } else if (evt.data.type === "GET_VERSION" && evt.ports[0]) {
         evt.ports[0].postMessage("<?php print UNYOHUB_VERSION; ?>");
     }
 });
@@ -67,21 +69,25 @@ self.addEventListener("fetch", function (evt) {
     if (evt.request.method !== "GET" || new URL(evt.request.url).origin !== self.location.origin) {
         return;
     }
-    evt.respondWith(caches.open(new_cache_name).then(async function (cache) {
+    
+    evt.respondWith((async function () {
+        var cache = await caches.open(new_cache_name);
+        
+        // 画面はネットワーク優先とし、オフライン時のみ自版のHTMLを返す
         if (evt.request.mode === "navigate") {
             try {
-                var response = await fetch(new Request(evt.request, {cache: "no-store"}));
-                if (response.ok) return response;
-                var fallback = await cache.match("/");
-                return fallback || response;
+                return await fetch(evt.request);
             } catch (error) {
                 var fallback = await cache.match("/");
-                if (fallback) return fallback;
+                if (fallback) {
+                    return fallback;
+                }
                 throw error;
             }
         }
+        
         return (await cache.match(evt.request)) || fetch(evt.request);
-    }));
+    })());
 });
 
 self.addEventListener("activate", function (evt) {
@@ -92,6 +98,8 @@ self.addEventListener("activate", function (evt) {
                     return caches.delete(cache_name);
                 }
             }));
-        }).then(function () { return self.clients.claim(); })
+        }).then(function () {
+            return self.clients.claim();
+        })
     );
 });

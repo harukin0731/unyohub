@@ -5731,15 +5731,13 @@ var history_back_resolve = null;
 
 
 if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/service_worker.php", {updateViaCache: "none"}).then(function () {
-        // Older releases update only by navigating to /?ts=... . Complete that
-        // explicit update once the new page has loaded the migration code.
+    navigator.serviceWorker.register("/service_worker.php").then(function () {
+        // 旧版の更新ボタンは /?ts=... を開くだけなので、新版の画面側でWorkerの更新を完了させる
         if (new URLSearchParams(location.search).has("ts")) {
-            return funcs_load_promise.then(async function () {
-                await complete_app_update();
-                var url = new URL(location.href);
-                url.searchParams.delete("ts");
-                history.replaceState(null, "", url.pathname + url.search + url.hash);
+            funcs_load_promise.then(complete_app_update).then(function () {
+                history.replaceState(null, "", location.pathname + location.hash);
+            }).catch(function (error) {
+                console.error("App update failed", error);
             });
         }
     }).catch(function (error) {
