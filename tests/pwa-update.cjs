@@ -105,14 +105,18 @@ async function testUpdateButton () {
 async function testLegacyTsMigration () {
     const main = fs.readFileSync('unyohub/main.js', 'utf8');
     const migration = main.slice(main.lastIndexOf('if ("serviceWorker" in navigator)'));
-    let migrated = 0, cleaned = '';
-    vm.runInNewContext(migration, {
+    let migrated = 0, cleaned = '', loadFuncs;
+    // Registration finishes before on_demand_funcs.js defines complete_app_update.
+    const context = {
         navigator: {serviceWorker: {async register() {}}},
         location: {search: '?ts=123', pathname: '/', hash: ''},
-        URLSearchParams, funcs_load_promise: Promise.resolve(),
-        async complete_app_update() { migrated++; },
+        URLSearchParams, funcs_load_promise: new Promise(resolve => { loadFuncs = resolve; }),
         history: {replaceState(_, __, url) { cleaned = url; }}, console
-    });
+    };
+    vm.runInNewContext(migration, context);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    context.complete_app_update = async () => { migrated++; };
+    loadFuncs();
     await new Promise(resolve => setTimeout(resolve, 10));
     assert.equal(migrated, 1);
     assert.equal(cleaned, '/');
