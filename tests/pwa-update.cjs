@@ -60,71 +60,100 @@ async function testServiceWorker () {
     assert.equal(await event('fetch', {request: {method: 'POST', url: origin + '/'}}), undefined);
 }
 
-async function testUpdateButton () {
+// Fake page with an active worker that answers GET_VERSION with activeVersion
+// (undefined = 26.09-1 worker without a message handler) and a waiting worker of the current release.
+function updateEnv ({activeVersion, pageVersion = version, instanceVersion = version}) {
     const helpers = fs.readFileSync('unyohub/on_demand_funcs.js', 'utf8');
     const snippet = helpers.slice(helpers.indexOf('function with_timeout ('), helpers.indexOf('function show_welcome_message ('));
-    let reloads = 0, closed = 0;
     const container = new EventTarget();
-    const pending = new EventTarget();
-    pending.state = 'installed';
-    const registration = {waiting: pending, installing: null, active: {}, async update() {}};
+    const worker = (state, workerVersion) => Object.assign(new EventTarget(), {state, postMessage(message, ports) {
+        if (message.type === 'GET_VERSION' && workerVersion !== undefined) ports[0].postMessage(workerVersion);
+    }});
+    const active = worker('activated', activeVersion);
+    const pending = worker('installed', version);
+    const registration = {waiting: pending, installing: null, active, async update() { env.updates++; }};
+    const basePostMessage = pending.postMessage;
     pending.postMessage = (message, ports) => {
-        if (message.type === 'SKIP_WAITING') queueMicrotask(() => {
+        if (message.type !== 'SKIP_WAITING') return basePostMessage(message, ports);
+        queueMicrotask(() => {
             registration.active = container.controller = pending;
             registration.waiting = null;
             pending.state = 'activated';
             container.dispatchEvent(new Event('controllerchange'));
         });
-        else ports[0].postMessage(version);
     };
-    container.controller = registration.active;
+    container.controller = active;
     container.getRegistration = async () => registration;
-    const context = {
+    const env = {updates: 0, reloads: 0, closed: 0, container, pending, registration};
+    env.context = {
         navigator: {onLine: true, serviceWorker: container}, MessageChannel,
-        instance_info: {unyohub_version: version}, console: {error() {}},
+        UNYOHUB_VERSION: pageVersion, instance_info: {unyohub_version: instanceVersion}, console: {error() {}},
         setTimeout, clearTimeout,
         history: {pushState(_, __, url) { assert.equal(container.controller, pending); assert.equal(url, '/'); }},
-        location: {pathname: '/', reload() { reloads++; }},
-        open_wait_screen() {}, close_wait_screen() { closed++; }, mes() {}
+        location: {pathname: '/', reload() { env.reloads++; }},
+        open_wait_screen() {}, close_wait_screen() { env.closed++; }, mes() {}
     };
-    vm.createContext(context);
-    vm.runInContext(snippet, context);
-
-    await context.reload_app(true);
-    await new Promise(resolve => setTimeout(resolve, 150));
-    assert.equal(reloads, 1);
-
-    context.app_update_in_progress = false;
-    registration.waiting = pending;
-    pending.state = 'redundant';
-    await context.reload_app(true);
-    assert.equal(reloads, 1);
-    assert.equal(closed, 1);
+    vm.createContext(env.context);
+    vm.runInContext(snippet, env.context);
+    return env;
 }
 
-async function testLegacyTsMigration () {
+async function testUpdateButton () {
+    const env = updateEnv({activeVersion: 'old', pageVersion: 'old'});
+    await env.context.reload_app(true);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(env.reloads, 1);
+
+    env.context.app_update_in_progress = false;
+    env.registration.waiting = env.pending;
+    env.pending.state = 'redundant';
+    await env.context.reload_app(true);
+    assert.equal(env.reloads, 1, 'failed update must not reload');
+    assert.equal(env.closed, 1);
+}
+
+async function testLoadSync () {
+    // New HTML while the old worker still controls the page; stale localStorage instance_info must not matter.
+    let env = updateEnv({activeVersion: 'old', instanceVersion: 'old'});
+    await env.context.sync_app_worker();
+    assert.equal(env.container.controller, env.pending, 'old worker is replaced on load');
+
+    // 26.09-1 worker does not answer GET_VERSION.
+    env = updateEnv({activeVersion: undefined});
+    await env.context.sync_app_worker();
+    assert.equal(env.container.controller, env.pending, 'legacy worker is replaced on load');
+
+    // Worker already matches the page: no update check.
+    env = updateEnv({activeVersion: version});
+    await env.context.sync_app_worker();
+    assert.equal(env.updates, 0);
+    assert.notEqual(env.container.controller, env.pending);
+}
+
+async function testMainRegistration () {
     const main = fs.readFileSync('unyohub/main.js', 'utf8');
-    const migration = main.slice(main.lastIndexOf('if ("serviceWorker" in navigator)'));
-    let migrated = 0, cleaned = '', loadFuncs;
-    // Registration finishes before on_demand_funcs.js defines complete_app_update.
+    const registration = main.slice(main.lastIndexOf('if ("serviceWorker" in navigator)'));
+    let synced = 0, cleaned = '', loadFuncs;
+    // Registration finishes before on_demand_funcs.js defines sync_app_worker.
     const context = {
         navigator: {serviceWorker: {async register() {}}},
         location: {search: '?ts=123', pathname: '/', hash: ''},
         URLSearchParams, funcs_load_promise: new Promise(resolve => { loadFuncs = resolve; }),
         history: {replaceState(_, __, url) { cleaned = url; }}, console
     };
-    vm.runInNewContext(migration, context);
+    vm.runInNewContext(registration, context);
+    assert.equal(cleaned, '/');
     await new Promise(resolve => setTimeout(resolve, 10));
-    context.complete_app_update = async () => { migrated++; };
+    context.sync_app_worker = async () => { synced++; };
     loadFuncs();
     await new Promise(resolve => setTimeout(resolve, 10));
-    assert.equal(migrated, 1);
-    assert.equal(cleaned, '/');
+    assert.equal(synced, 1);
 }
 
 (async () => {
     await testServiceWorker();
     await testUpdateButton();
-    await testLegacyTsMigration();
-    console.log('PASS: mismatched install rejected, no old-cache fallback, errors passed through, offline navigation, scoped cleanup, activation before reload, failed update does not reload, legacy ?ts migration');
+    await testLoadSync();
+    await testMainRegistration();
+    console.log('PASS: mismatched install rejected, no old-cache fallback, errors passed through, offline navigation, scoped cleanup, activation before reload, failed update does not reload, worker synced to page release on load');
 })().catch(error => { console.error(error); process.exitCode = 1; });

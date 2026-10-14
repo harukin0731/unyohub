@@ -5731,17 +5731,17 @@ var history_back_resolve = null;
 
 
 if ("serviceWorker" in navigator) {
+    // 旧版の更新ボタンが付けるキャッシュ回避用のパラメーターは不要
+    if (new URLSearchParams(location.search).has("ts")) {
+        history.replaceState(null, "", location.pathname + location.hash);
+    }
+    
     navigator.serviceWorker.register("/service_worker.php").then(function () {
-        // 旧版の更新ボタンは /?ts=... を開くだけなので、新版の画面側でWorkerの更新を完了させる
-        if (new URLSearchParams(location.search).has("ts")) {
-            funcs_load_promise.then(function () {
-                return complete_app_update();
-            }).then(function () {
-                history.replaceState(null, "", location.pathname + location.hash);
-            }).catch(function (error) {
-                console.error("App update failed", error);
+        return funcs_load_promise.then(function () {
+            return sync_app_worker().catch(function (error) {
+                console.error("Service Worker update failed", error);
             });
-        }
+        });
     }).catch(function (error) {
         console.error("Service Worker registration failed", error);
     });

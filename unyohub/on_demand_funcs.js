@@ -3962,7 +3962,7 @@ function get_worker_version (worker) {
     });
 }
 
-async function complete_app_update () {
+async function complete_app_update (expected_version) {
     if (!("serviceWorker" in navigator)) {
         return;
     }
@@ -3990,8 +3990,23 @@ async function complete_app_update () {
         await activated;
     }
     
-    if (!registration.active || await get_worker_version(registration.active) !== instance_info["unyohub_version"]) {
+    var controller = navigator.serviceWorker.controller;
+    if (!registration.active || (controller && controller !== registration.active) || await get_worker_version(registration.active) !== expected_version) {
         throw new Error("Service Worker release mismatch");
+    }
+}
+
+// 画面は新版なのに旧版のWorkerが制御を続け、オフライン時に旧版のHTMLが返る状態を解消する
+async function sync_app_worker () {
+    var controller = navigator.serviceWorker.controller;
+    if (!controller || !navigator.onLine) {
+        return;
+    }
+    
+    // 26.09-1以前のWorkerは版番号に応答しないため、不一致として扱う
+    var worker_version = await get_worker_version(controller).catch(function () { return null; });
+    if (worker_version !== UNYOHUB_VERSION) {
+        await complete_app_update(UNYOHUB_VERSION);
     }
 }
 
@@ -4012,7 +4027,7 @@ async function reload_app (force_update = false) {
     if (force_update) {
         app_update_in_progress = true;
         try {
-            await complete_app_update();
+            await complete_app_update(instance_info["unyohub_version"]);
         } catch (error) {
             app_update_in_progress = false;
             close_wait_screen();
