@@ -3919,7 +3919,89 @@ function show_about () {
 }
 
 
-function reload_app (force_update = false) {
+function worker_version (worker) {
+    return new Promise(function (resolve, reject) {
+        if (!worker) { reject(new Error("Service Worker is unavailable")); return; }
+        var channel = new MessageChannel();
+        var timer = setTimeout(function () {
+            channel.port1.close();
+            reject(new Error("Service Worker version check timed out"));
+        }, 3000);
+        channel.port1.onmessage = function (evt) {
+            clearTimeout(timer);
+            channel.port1.close();
+            resolve(evt.data);
+        };
+        worker.postMessage({type: "GET_VERSION"}, [channel.port2]);
+    });
+}
+
+async function update_app_worker (attempt) {
+    if (!("serviceWorker" in navigator)) return;
+    var registration = await navigator.serviceWorker.register("/service_worker.php", {updateViaCache: "none"});
+    if (attempt.cancelled) throw new Error("App update cancelled");
+    await registration.update();
+    if (attempt.cancelled) throw new Error("App update cancelled");
+    var pending = registration.waiting || registration.installing;
+    if (pending) {
+        await new Promise(function (resolve, reject) {
+            var timer = setTimeout(function () { finish(new Error("Service Worker installation timed out")); }, 45000);
+            function finish(error) {
+                clearTimeout(timer);
+                pending.removeEventListener("statechange", changed);
+                if (error) reject(error); else resolve();
+            }
+            function changed () {
+                if (pending.state === "installed" || pending.state === "activated") finish();
+                else if (pending.state === "redundant") finish(new Error("Service Worker installation failed"));
+            }
+            pending.addEventListener("statechange", changed);
+            changed();
+        });
+        if (attempt.cancelled) throw new Error("App update cancelled");
+        await new Promise(function (resolve, reject) {
+            var timer = setTimeout(function () { finish(new Error("Service Worker activation timed out")); }, 15000);
+            function finish(error) {
+                clearTimeout(timer);
+                navigator.serviceWorker.removeEventListener("controllerchange", changed);
+                if (error) reject(error); else resolve();
+            }
+            function changed () {
+                if (navigator.serviceWorker.controller === pending) finish();
+            }
+            navigator.serviceWorker.addEventListener("controllerchange", changed);
+            changed();
+            pending.postMessage({type: "SKIP_WAITING"});
+        });
+    }
+    var expected = instance_info["unyohub_version"];
+    if (await worker_version(navigator.serviceWorker.controller) !== expected) {
+        throw new Error("Service Worker release mismatch");
+    }
+}
+
+async function complete_app_update () {
+    var attempt = {cancelled: false};
+    var timer;
+    try {
+        await Promise.race([
+            update_app_worker(attempt),
+            new Promise(function (_, reject) {
+                timer = setTimeout(function () { reject(new Error("App update timed out")); }, 65000);
+            })
+        ]);
+    } catch (error) {
+        attempt.cancelled = true;
+        throw error;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+var app_update_in_progress = false;
+
+async function reload_app (force_update = false) {
+    if (app_update_in_progress) return;
     if (force_update && !navigator.onLine) {
         mes("端末をネットワークに接続してください", true);
         return;
@@ -3928,6 +4010,16 @@ function reload_app (force_update = false) {
     open_wait_screen();
     
     if (force_update) {
+        app_update_in_progress = true;
+        try {
+            await complete_app_update();
+        } catch (error) {
+            app_update_in_progress = false;
+            close_wait_screen();
+            console.error("App update failed", error);
+            mes("更新を完了できませんでした。通信状態を確認して再度お試しください", true);
+            return;
+        }
         history.pushState(null, "", "/?ts=" + Date.now());
     } else if (location.pathname !== "/") {
         history.pushState(null, "", "/");

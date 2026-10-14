@@ -1,0 +1,109 @@
+// Run: node tests/pwa-update.cjs /path/to/rendered-service-worker.js
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+const swSource = fs.readFileSync(process.argv[2], 'utf8');
+const origin = 'https://example.test';
+const version = swSource.match(/postMessage\("([^"]+)"\)/)[1];
+const nativeRequest = Request;
+class LocalRequest extends nativeRequest {
+    constructor(input, options) { super(typeof input === 'string' ? new URL(input, origin) : input, options); }
+}
+const stores = new Map([['unyohub_vold', new Map([[origin + '/', new Response('old')]])], ['other-app', new Map()]]);
+let offline = false;
+let wrongHtml = false;
+let claimed = false;
+let skipped = false;
+const listeners = {};
+const key = input => typeof input === 'string' ? new URL(input, origin).href : input.url;
+const caches = {
+    async open(name) {
+        if (!stores.has(name)) stores.set(name, new Map());
+        return {
+            async put(url, response) { stores.get(name).set(key(url), response.clone()); },
+            async match(url) { return stores.get(name).get(key(url))?.clone(); }
+        };
+    },
+    async keys() { return [...stores.keys()]; },
+    async delete(name) { return stores.delete(name); }
+};
+vm.runInNewContext(swSource, {
+    Request: LocalRequest, URL, caches,
+    self: {location: {origin}, clients: {async claim() {claimed = true;}},
+           async skipWaiting() {skipped = true;}, addEventListener(name, handler) {listeners[name] = handler;}},
+    async fetch(request) {
+        if (offline) throw new Error('offline');
+        assert.equal(request.cache, 'no-store');
+        return new Response(new URL(request.url).pathname === '/' ?
+            `const UNYOHUB_VERSION = "${wrongHtml ? 'wrong' : version}";` : 'new asset');
+    }
+});
+async function event(type, fields = {}) {
+    let promise;
+    listeners[type]({...fields, waitUntil(p) {promise = p;}, respondWith(p) {promise = p;}});
+    return await promise;
+}
+async function response(request) {return (await event('fetch', {request})).text();}
+(async () => {
+    wrongHtml = true;
+    await assert.rejects(event('install'), /release does not match/);
+    assert(stores.has('unyohub_vold'));
+    wrongHtml = false;
+    await event('install');
+    assert.equal(await response({url: origin + '/', method: 'GET', mode: 'navigate'}), `const UNYOHUB_VERSION = "${version}";`);
+    offline = true;
+    assert.equal(await response({url: origin + '/railroad_example/', method: 'GET', mode: 'navigate'}), `const UNYOHUB_VERSION = "${version}";`);
+    await event('message', {data: {type: 'SKIP_WAITING'}});
+    assert(skipped);
+    await event('activate');
+    assert(claimed && !stores.has('unyohub_vold') && stores.has('other-app'));
+    assert.equal(await event('fetch', {request: {method: 'POST'}}), undefined);
+    const helpers = fs.readFileSync('unyohub/on_demand_funcs.js', 'utf8');
+    const snippet = helpers.slice(helpers.indexOf('function worker_version ('), helpers.indexOf('function show_welcome_message ('));
+    let reloads = 0, closed = 0;
+    const container = new EventTarget();
+    const pending = new EventTarget();
+    pending.state = 'installed';
+    pending.postMessage = (message, ports) => {
+        if (message.type === 'SKIP_WAITING') queueMicrotask(() => {
+            container.controller = pending;
+            pending.state = 'activated';
+            container.dispatchEvent(new Event('controllerchange'));
+        });
+        else { ports[0].postMessage(version); ports[0].close(); }
+    };
+    container.controller = {};
+    const registration = {waiting: pending, async update() {}};
+    container.register = async () => registration;
+    const context = {
+        navigator: {onLine: true, serviceWorker: container}, MessageChannel,
+        instance_info: {unyohub_version: version}, console,
+        setTimeout, clearTimeout, history: {pushState() {assert.equal(container.controller, pending);}},
+        location: {pathname: '/', reload() {reloads++;}},
+        open_wait_screen() {}, close_wait_screen() {closed++;}, mes() {}
+    };
+    vm.createContext(context); vm.runInContext(snippet, context);
+    await context.reload_app(true);
+    await new Promise(resolve => setTimeout(resolve, 150));
+    assert.equal(reloads, 1);
+    context.app_update_in_progress = false;
+    pending.state = 'redundant'; container.controller = {};
+    const originalError = context.console;
+    context.console = {error() {}};
+    await context.reload_app(true);
+    assert.equal(reloads, 1); assert.equal(closed, 1);
+    context.console = originalError;
+    let migrated = 0, cleaned = '';
+    const main = fs.readFileSync('unyohub/main.js', 'utf8');
+    const migration = main.slice(main.lastIndexOf('if ("serviceWorker" in navigator)'));
+    vm.runInNewContext(migration, {
+        navigator: {serviceWorker: {async register() {return registration;}}},
+        location: {search: '?ts=123', href: origin + '/?ts=123'},
+        URLSearchParams, URL, funcs_load_promise: Promise.resolve(),
+        async complete_app_update() {migrated++;},
+        history: {replaceState(_, __, url) {cleaned = url;}}, console
+    });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(migrated, 1); assert.equal(cleaned, '/');
+    console.log('PASS: mismatched install rejected, no old-cache fallback, offline navigation, scoped cleanup, activation before reload, failed update does not reload');
+})().catch(error => {console.error(error); process.exitCode = 1;});

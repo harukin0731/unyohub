@@ -5731,5 +5731,18 @@ var history_back_resolve = null;
 
 
 if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/service_worker.php");
+    navigator.serviceWorker.register("/service_worker.php", {updateViaCache: "none"}).then(function () {
+        // Older releases update only by navigating to /?ts=... . Complete that
+        // explicit update once the new page has loaded the migration code.
+        if (new URLSearchParams(location.search).has("ts")) {
+            return funcs_load_promise.then(async function () {
+                await complete_app_update();
+                var url = new URL(location.href);
+                url.searchParams.delete("ts");
+                history.replaceState(null, "", url.pathname + url.search + url.hash);
+            });
+        }
+    }).catch(function (error) {
+        console.error("Service Worker registration failed", error);
+    });
 }
