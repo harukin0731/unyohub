@@ -3962,7 +3962,18 @@ function get_worker_version (worker) {
     });
 }
 
-async function complete_app_update (expected_version) {
+var app_update_queue = Promise.resolve();
+
+// 自動同期と更新ボタンが同時に切り替えないよう直列化する
+function complete_app_update (expected_version) {
+    var result = app_update_queue.then(function () {
+        return run_app_update(expected_version);
+    });
+    app_update_queue = result.catch(function () {});
+    return result;
+}
+
+async function run_app_update (expected_version) {
     if (!("serviceWorker" in navigator)) {
         return;
     }
@@ -3982,6 +3993,11 @@ async function complete_app_update (expected_version) {
             }
             return pending.state !== "installing";
         }, 45000, "Service Worker installation timed out");
+        
+        // 取得中にサーバーが別の版へ更新された場合は切り替えない
+        if (await get_worker_version(pending) !== expected_version) {
+            throw new Error("Service Worker release mismatch");
+        }
         
         var activated = wait_for_state(navigator.serviceWorker, "controllerchange", function () {
             return navigator.serviceWorker.controller === pending;

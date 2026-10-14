@@ -64,7 +64,7 @@ async function testServiceWorker () {
 
 // Fake page with an active worker that answers GET_VERSION with activeVersion
 // (undefined = 26.09-1 worker without a message handler) and a waiting worker of the current release.
-function updateEnv ({activeVersion, pageVersion = version, instanceVersion = version}) {
+function updateEnv ({activeVersion, pendingVersion = version, pageVersion = version, instanceVersion = version}) {
     const helpers = fs.readFileSync('unyohub/on_demand_funcs.js', 'utf8');
     const snippet = helpers.slice(helpers.indexOf('function with_timeout ('), helpers.indexOf('function show_welcome_message ('));
     const container = new EventTarget();
@@ -72,11 +72,12 @@ function updateEnv ({activeVersion, pageVersion = version, instanceVersion = ver
         if (message.type === 'GET_VERSION' && workerVersion !== undefined) ports[0].postMessage(workerVersion);
     }});
     const active = worker('activated', activeVersion);
-    const pending = worker('installed', version);
+    const pending = worker('installed', pendingVersion);
     const registration = {waiting: pending, installing: null, active, async update() { env.updates++; }};
     const basePostMessage = pending.postMessage;
     pending.postMessage = (message, ports) => {
         if (message.type !== 'SKIP_WAITING') return basePostMessage(message, ports);
+        env.skips++;
         queueMicrotask(() => {
             registration.active = container.controller = pending;
             registration.waiting = null;
@@ -86,7 +87,7 @@ function updateEnv ({activeVersion, pageVersion = version, instanceVersion = ver
     };
     container.controller = active;
     container.getRegistration = async () => registration;
-    const env = {updates: 0, reloads: 0, closed: 0, container, pending, registration};
+    const env = {updates: 0, skips: 0, reloads: 0, closed: 0, container, pending, registration};
     env.context = {
         navigator: {onLine: true, serviceWorker: container}, MessageChannel,
         UNYOHUB_VERSION: pageVersion, instance_info: {unyohub_version: instanceVersion}, console: {error() {}},
@@ -130,6 +131,18 @@ async function testLoadSync () {
     await env.context.sync_app_worker();
     assert.equal(env.updates, 0);
     assert.notEqual(env.container.controller, env.pending);
+
+    // Server moved on to another release while the page was loading: do not activate it.
+    env = updateEnv({activeVersion: 'old', pendingVersion: 'newer'});
+    await assert.rejects(env.context.sync_app_worker(), /release mismatch/);
+    assert.equal(env.skips, 0);
+    assert.notEqual(env.container.controller, env.pending);
+
+    // Automatic sync and the update button running at the same time are serialized.
+    env = updateEnv({activeVersion: 'old'});
+    await Promise.all([env.context.sync_app_worker(), env.context.complete_app_update(version)]);
+    assert.equal(env.skips, 1);
+    assert.equal(env.container.controller, env.pending);
 }
 
 async function testMainRegistration () {
@@ -157,5 +170,5 @@ async function testMainRegistration () {
     await testUpdateButton();
     await testLoadSync();
     await testMainRegistration();
-    console.log('PASS: mismatched install rejected, no old-cache fallback, cache-first HTML, errors passed through, offline navigation, scoped cleanup, activation before reload, failed update does not reload, worker synced to page release on load');
+    console.log('PASS: mismatched install rejected, no old-cache fallback, cache-first HTML, errors passed through, offline navigation, scoped cleanup, activation before reload, failed update does not reload, worker synced to page release on load, other releases not activated, updates serialized');
 })().catch(error => { console.error(error); process.exitCode = 1; });
