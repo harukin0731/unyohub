@@ -46,7 +46,9 @@ async function testServiceWorker () {
     network.html = currentHtml;
     await event('install');
 
-    assert.equal(await (await navigate('/')).text(), currentHtml);
+    network.html = 'network';
+    assert.equal(await (await navigate('/')).text(), currentHtml, 'precached HTML is served without network access');
+    assert.equal(await (await navigate('/railroad_example/')).text(), 'asset', 'uncached pages come from the network');
     network.status = 500;
     assert.equal((await navigate('/user/')).status, 500, 'server errors are passed through, not replaced by cached HTML');
     network.status = 200;
@@ -155,5 +157,5 @@ async function testMainRegistration () {
     await testUpdateButton();
     await testLoadSync();
     await testMainRegistration();
-    console.log('PASS: mismatched install rejected, no old-cache fallback, errors passed through, offline navigation, scoped cleanup, activation before reload, failed update does not reload, worker synced to page release on load');
+    console.log('PASS: mismatched install rejected, no old-cache fallback, cache-first HTML, errors passed through, offline navigation, scoped cleanup, activation before reload, failed update does not reload, worker synced to page release on load');
 })().catch(error => { console.error(error); process.exitCode = 1; });

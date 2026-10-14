@@ -73,20 +73,22 @@ self.addEventListener("fetch", function (evt) {
     evt.respondWith((async function () {
         var cache = await caches.open(new_cache_name);
         
-        // 画面はネットワーク優先とし、オフライン時のみ自版のHTMLを返す
-        if (evt.request.mode === "navigate") {
-            try {
-                return await fetch(evt.request);
-            } catch (error) {
-                var fallback = await cache.match("/");
-                if (fallback) {
-                    return fallback;
-                }
-                throw error;
-            }
+        // 自版のキャッシュのみを参照し、旧版のキャッシュに残ったファイルを返さない
+        var cached_response = await cache.match(evt.request);
+        if (cached_response) {
+            return cached_response;
         }
         
-        return (await cache.match(evt.request)) || fetch(evt.request);
+        try {
+            return await fetch(evt.request);
+        } catch (error) {
+            // キャッシュにない画面もオフライン時は自版のHTMLで起動する
+            var fallback = evt.request.mode === "navigate" ? await cache.match("/") : undefined;
+            if (fallback) {
+                return fallback;
+            }
+            throw error;
+        }
     })());
 });
 
