@@ -1,0 +1,88 @@
+name: unyohub
+x-app: &app
+  image: unyohub-app:local
+  build:
+    context: .
+    target: app
+  environment:
+    TZ: Asia/Tokyo
+    SMTP_HOST: ${SMTP_HOST:-}
+    SMTP_PORT: ${SMTP_PORT:-587}
+    SMTP_USER: ${SMTP_USER:-}
+    SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    SMTP_FROM: ${SMTP_FROM:-}
+    SMTP_TLS: ${SMTP_TLS:-on}
+    SMTP_STARTTLS: ${SMTP_STARTTLS:-on}
+  volumes:
+    - config:/var/www/unyohub/config
+    - data:/var/www/unyohub/data
+    - libs_data:/var/www/unyohub/libs_data
+    - common_dbs:/var/www/unyohub/common_dbs
+  networks: [backend]
+services:
+  app:
+    <<: *app
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python3, /opt/unyohub/manage.py, health]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+  web:
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      backend:
+      ingress:
+        ipv4_address: 172.30.77.3
+    healthcheck:
+      test: [CMD, curl, -fsS, http://localhost/healthz]
+      interval: 30s
+      timeout: 5s
+  scheduler:
+    <<: *app
+    command: [python3, /opt/unyohub/scheduler.py]
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+  tools:
+    <<: *app
+    profiles: [tools]
+    volumes:
+      - config:/var/www/unyohub/config
+      - data:/var/www/unyohub/data
+      - libs_data:/var/www/unyohub/libs_data
+      - common_dbs:/var/www/unyohub/common_dbs
+      - ./backups:/backups
+      - ./imports:/imports:ro
+    command: [python3, /opt/unyohub/manage.py, help]
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: [tunnel, --no-autoupdate, run]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      ingress:
+        ipv4_address: 172.30.77.2
+networks:
+  backend:
+  ingress:
+    ipam:
+      config:
+        - subnet: 172.30.77.0/24
+volumes:
+  config:
+  data:
+  libs_data:
+  common_dbs:

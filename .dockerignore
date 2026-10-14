@@ -1,0 +1,11 @@
+*
+!Dockerfile
+!docker/
+!docker/**
+!unyohub/
+!unyohub/**
+unyohub/data/
+unyohub/libs_data/
+unyohub/common_dbs/
+**/__pycache__/
+**/*.py[cod]

@@ -103,6 +103,7 @@ def cache_railroad_transition_data (mes, main_dir, date_obj):
     except:
         mes("路線系統 " + os.path.basename(main_dir) + " でキャッシュデータの生成に失敗しました", True)
         mes(traceback.format_exc())
+        return False
     
     
     return True
@@ -123,7 +124,7 @@ def cache_transition_data (mes, data_dir_path, config_dir_path, start_date=None,
             start_date_obj = date.fromisoformat(start_date)
         except:
             mes("キャッシュ対象範囲開始日が正しい日付文字列ではありません", True)
-            return
+            return False
         
         if end_date is None:
             end_date_obj = start_date_obj
@@ -132,7 +133,7 @@ def cache_transition_data (mes, data_dir_path, config_dir_path, start_date=None,
                 end_date_obj = date.fromisoformat(end_date)
             except:
                 mes("キャッシュ対象範囲終了日が正しい日付文字列ではありません", True)
-                return
+                return False
     
     
     try:
@@ -140,11 +141,12 @@ def cache_transition_data (mes, data_dir_path, config_dir_path, start_date=None,
             railroads = json.load(json_f)
     except Exception:
         mes("railroads.json の読み込みに失敗しました", True)
-        return
+        return False
     
     railroad_list = list(railroads["railroads"].keys())
     
     
+    succeeded = True
     current_date_obj = start_date_obj
     while current_date_obj <= end_date_obj:
         if "-s" not in options:
@@ -152,12 +154,15 @@ def cache_transition_data (mes, data_dir_path, config_dir_path, start_date=None,
         
         for railroad_id in railroad_list:
             if "-s" in options:
-                cache_railroad_transition_data(do_nothing, data_dir_path + "/" + railroad_id, current_date_obj)
+                result = cache_railroad_transition_data(do_nothing, data_dir_path + "/" + railroad_id, current_date_obj)
             else:
-                cache_railroad_transition_data(mes, data_dir_path + "/" + railroad_id, current_date_obj)
+                result = cache_railroad_transition_data(mes, data_dir_path + "/" + railroad_id, current_date_obj)
+            succeeded = result and succeeded
         
         current_date_obj += timedelta_1day
     
     
     if "-s" not in options:
         mes("全ての処理が完了しました")
+
+    return succeeded

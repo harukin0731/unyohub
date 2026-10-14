@@ -10,7 +10,7 @@ import sqlite3
 
 from google.protobuf.json_format import MessageToDict
 
-from modules import gtfs_realtime_pb2
+from google.transit import gtfs_realtime_pb2
 from modules import diagram_funcs
 
 

@@ -49,7 +49,7 @@ if arg_count >= 1:
     match args[0]:
         case "setup-libs":
             if arg_count == 1 or arg_count == 2:
-                subprocess.run(["php", "modules/libs_setup.php", *args[1:]])
+                subprocess.run(["php", "modules/libs_setup.php", *args[1:]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "embed-icons":
@@ -86,49 +86,49 @@ if arg_count >= 1:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "user-info":
             if arg_count <= 2:
-                subprocess.run(["php", "modules/user_info.php", *args[1:]])
+                subprocess.run(["php", "modules/user_info.php", *args[1:]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "create-user":
             if arg_count == 3 or arg_count == 4:
-                subprocess.run(["php", "modules/create_user.php", *args[1:]])
+                subprocess.run(["php", "modules/create_user.php", *args[1:]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "modify-user-info":
-            subprocess.run(["php", "modules/modify_user_info.php", *sys.argv[2:]])
+            subprocess.run(["php", "modules/modify_user_info.php", *sys.argv[2:]], check=True)
         case "role-info":
             if arg_count == 1 or arg_count == 2:
-                subprocess.run(["php", "modules/role_info.php", *args[1:]])
+                subprocess.run(["php", "modules/role_info.php", *args[1:]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "create-role":
             if arg_count == 3:
-                subprocess.run(["php", "modules/create_role.php", args[1], args[2]])
+                subprocess.run(["php", "modules/create_role.php", args[1], args[2]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "delete-role":
             if arg_count == 2:
-                subprocess.run(["php", "modules/delete_role.php", args[1]])
+                subprocess.run(["php", "modules/delete_role.php", args[1]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "add-permission":
             if arg_count == 4 or arg_count == 3:
-                subprocess.run(["php", "modules/add_permission.php", *args[1:]])
+                subprocess.run(["php", "modules/add_permission.php", *args[1:]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "remove-permission":
             if arg_count == 4 or arg_count == 3:
-                subprocess.run(["php", "modules/remove_permission.php", *args[1:]])
+                subprocess.run(["php", "modules/remove_permission.php", *args[1:]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "assign-role":
             if arg_count == 3:
-                subprocess.run(["php", "modules/assign_role.php", args[1], args[2]])
+                subprocess.run(["php", "modules/assign_role.php", args[1], args[2]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "remove-role":
             if arg_count == 3:
-                subprocess.run(["php", "modules/remove_role.php", args[1], args[2]])
+                subprocess.run(["php", "modules/remove_role.php", args[1], args[2]], check=True)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "init-db":
@@ -143,7 +143,8 @@ if arg_count >= 1:
         case "cache-transitions":
             if arg_count <= 3:
                 cache_transition_data = importlib.import_module("modules.cache_transition_data")
-                cache_transition_data.cache_transition_data(mes, data_dir, os.path.abspath(UNYOHUB_CONFIG_DIR), *args[1:], options=options)
+                succeeded = cache_transition_data.cache_transition_data(mes, data_dir, os.path.abspath(UNYOHUB_CONFIG_DIR), *args[1:], options=options)
+                sys.exit(0 if succeeded else 1)
             else:
                 print("\x1b[31m引数の数が異常です\x1b[0m")
         case "get-gtfs-realtime":
