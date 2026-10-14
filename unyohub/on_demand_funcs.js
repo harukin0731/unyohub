@@ -3418,7 +3418,11 @@ function show_login_form () {
     buf += "<input type='text' id='login_user_id' autocomplete='username'>";
     buf += "<h4>パスワード</h4>";
     buf += "<input type='password' id='login_password' autocomplete='current-password'>";
+    if (instance_info["email_enabled"] !== false) {
     buf += "<div class='link_block'><a href='/user/send_password_reset_email.php' target='_blank' rel='opener'>パスワードを忘れた場合</a></div>";
+    } else {
+        buf += "<div class=\"informational_text\">パスワードの復旧は管理者にお問い合わせください。</div>";
+    }
     buf += "<button type='button' class='wide_button' onclick='challenge_login();'>ログイン</button>";
     
     popup_inner_elm.innerHTML = buf;

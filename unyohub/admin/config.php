@@ -22,6 +22,7 @@ if (isset($_POST["instance_name"], $_POST["instance_introduction"], $_POST["inst
     $config_str .= "available_days_ahead = ".min(max(intval($_POST["available_days_ahead"]), 1), 30)."\n";
     $config_str .= "\n";
     $config_str .= "require_invite_code = ".(!empty($_POST["require_invite_code"]) ? "true" : "false")."\n";
+    $config_str .= "email_enabled = ".(!empty($_POST["email_enabled"]) ? "true" : "false")."\n";
     $config_str .= "require_email_address = ".(!empty($_POST["require_email_address"]) ? "true" : "false")."\n";
     $config_str .= "allow_guest_user = ".(!empty($_POST["allow_guest_user"]) ? "true" : "false")."\n";
     $config_str .= "validate_posted_formations = ".(!empty($_POST["validate_posted_formations"]) ? "true" : "false")."\n";
@@ -92,6 +93,10 @@ if ($config["require_invite_code"]) {
     print " checked='checked'";
 }
 print "><label for='require_invite_code'>ユーザー登録を招待制にする</label>";
+print "<input type='checkbox' name='email_enabled' id='email_enabled' class='toggle' value='YES'";
+if (!isset($config["email_enabled"]) || $config["email_enabled"]) { print " checked"; }
+print "><label for='email_enabled'>メール機能を有効にする（送信環境の設定が必要）</label>";
+
 print "<input type='checkbox' name='require_email_address' id='require_email_address' class='toggle' value='YES'";
 if ($config["require_email_address"]) {
     print " checked='checked'";

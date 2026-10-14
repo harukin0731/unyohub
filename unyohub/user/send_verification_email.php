@@ -1,5 +1,6 @@
 <?php
 include "user_common.php";
+unyohub_require_email_enabled($main_config);
 
 if (empty($_POST["email_address"])) {
     print "ERROR: メールアドレスが未入力です";
@@ -49,6 +50,10 @@ if (empty($verification_code)) {
     exit();
 }
 
-mb_send_mail($_POST["email_address"], "メールアドレスの確認 - ".$main_config["instance_name"], $main_config["instance_name"]."にご利用のメールアドレスを登録するための確認メールです。\nメールアドレスの登録を完了するには、以下の確認コードを".$main_config["instance_name"]."の登録フォームにご入力ください\n\n確認コード: ".$verification_code, "From: ".$main_config["sender_email_address"]);
+if (!mb_send_mail($_POST["email_address"], "メールアドレスの確認 - ".$main_config["instance_name"], $main_config["instance_name"]."にご利用のメールアドレスを登録するための確認メールです。\nメールアドレスの登録を完了するには、以下の確認コードを".$main_config["instance_name"]."の登録フォームにご入力ください\n\n確認コード: ".$verification_code, "From: ".$main_config["sender_email_address"])) {
+    http_response_code(503);
+    print "ERROR: メールの送信に失敗しました";
+    exit;
+}
 
 print "SUCCEEDED";

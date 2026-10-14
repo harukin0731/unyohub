@@ -3,7 +3,13 @@ include "../version.php";
 include "../libs/wakarana/main.php";
 include "../libs/zizai_captcha/main.php";
 
+require_once __DIR__."/../email_mode.php";
+
 $main_config = parse_ini_file("../config/main.ini", FALSE, INI_SCANNER_TYPED);
+
+if (!unyohub_email_enabled($main_config)) {
+    $main_config["require_email_address"] = false;
+}
 
 function print_header ($title = "", $noindex = TRUE, $load_captcha_js = FALSE, $show_close_button = TRUE) {
     global $main_config;

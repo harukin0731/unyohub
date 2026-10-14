@@ -84,16 +84,19 @@ if (is_object($user)) {
     print "        <h3>ハンドルネーム</h3>\n";
     print "        <input type=\"text\" name=\"user_name\" value=\"".addslashes($user_name)."\" autocomplete=\"nickname\">\n";
     
-    print "        <h3>メールアドレス</h3>\n";
-    $email_address = $user->get_primary_email_address();
-    if (!empty($email_address)) {
-        $email_address = htmlspecialchars($email_address);
-    } else {
-        $email_address = "(未登録)";
-    }
-    print "        <div class=\"value_and_button\"><b id=\"email_address\">".$email_address."</b><button type=\"button\" onclick=\"window.open('change_email_address.php');\">変更</button></div>\n";
-    print "        <div class=\"informational_text\">メールアドレスは他のユーザーには公開されません。</div>\n";
+    if (unyohub_email_enabled($main_config)) {
+        print "        <h3>メールアドレス</h3>\n";
+        $email_address = $user->get_primary_email_address();
+        if (!empty($email_address)) {
+            $email_address = htmlspecialchars($email_address);
+        } else {
+            $email_address = "(未登録)";
+        }
+        print "        <div class=\"value_and_button\"><b id=\"email_address\">".$email_address."</b><button type=\"button\" onclick=\"window.open('change_email_address.php');\">変更</button></div>\n";
+        print "        <div class=\"informational_text\">メールアドレスは他のユーザーには公開されません。</div>\n";
     
+    }
+
     print "        <h3>webサイトのURL(省略可能)</h3>\n";
     print "        <input type=\"text\" name=\"website_url\" value=\"".addslashes($website_url)."\" autocomplete=\"url\">\n";
     print "        <div class=\"informational_text\">ブログやSNSのURLを登録することができます。</div>\n";

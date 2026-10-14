@@ -1,5 +1,6 @@
 <?php
 include "../version.php";
+require_once __DIR__."/../email_mode.php";
 
 header("Access-Control-Allow-Origin: *");
 
@@ -22,6 +23,7 @@ $main_config = parse_ini_file(MAIN_CONFIG_PATH, FALSE, INI_SCANNER_TYPED);
 
 $instance_info = array(
     "unyohub_version" => UNYOHUB_VERSION,
+    "email_enabled" => unyohub_email_enabled($main_config),
     "instance_name" => $main_config["instance_name"],
     "available_days_ahead" => $main_config["available_days_ahead"],
     "allow_guest_user" => $main_config["allow_guest_user"],

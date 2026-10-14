@@ -1,5 +1,6 @@
 <?php
 include "user_common.php";
+unyohub_require_email_enabled($main_config);
 
 if (isset($_POST["user_id"], $_POST["email_address"], $_POST["zizai_captcha_id"], $_POST["zizai_captcha_characters"])) {
     $wakarana = new wakarana("../config");
@@ -20,7 +21,11 @@ if (isset($_POST["user_id"], $_POST["email_address"], $_POST["zizai_captcha_id"]
     }
     
     if (empty($error_list)) {
-        mb_send_mail($_POST["email_address"], "ログインパスワードのリセット - ".$main_config["instance_name"], $main_config["instance_name"]."のログインパスワードをリセットするには以下のURLにアクセスしてください。\n\n".(empty($_SERVER["HTTPS"]) ? "http://" : "https://").$_SERVER["HTTP_HOST"].dirname($_SERVER["REQUEST_URI"])."/reset_password.php?reset_token=".$user->create_password_reset_token(), "From: ".$main_config["sender_email_address"]);
+        if (!mb_send_mail($_POST["email_address"], "ログインパスワードのリセット - ".$main_config["instance_name"], $main_config["instance_name"]."のログインパスワードをリセットするには以下のURLにアクセスしてください。\n\n".(empty($_SERVER["HTTPS"]) ? "http://" : "https://").$_SERVER["HTTP_HOST"].dirname($_SERVER["REQUEST_URI"])."/reset_password.php?reset_token=".$user->create_password_reset_token(), "From: ".$main_config["sender_email_address"])) {
+            http_response_code(503);
+            print "メールの送信に失敗しました。管理者にお問い合わせください。";
+            exit;
+        }
         
         print_header();
         

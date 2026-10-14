@@ -1,5 +1,6 @@
 <?php
 include "../version.php";
+require_once __DIR__."/../email_mode.php";
 
 $main_config = parse_ini_file("../config/main.ini", FALSE, INI_SCANNER_TYPED);
 
@@ -15,6 +16,7 @@ function print_header ($title = "", $load_captcha_js = FALSE) {
     }
     
     $version = UNYOHUB_VERSION;
+    $email_enabled = unyohub_email_enabled($main_config) ? "true" : "false";
     print <<< EOM
     <html>
     <head lang="ja">
@@ -24,6 +26,7 @@ function print_header ($title = "", $load_captcha_js = FALSE) {
         <title>{$title}</title>
         <link rel="stylesheet" href="/integration/integration_styles.css?v={$version}">
         <link rel="shortcut icon" href="/favicon.ico">
+        <script>window.unyohubEmailEnabled = {$email_enabled};</script>
         <script src="/integration/integration_funcs.js?v={$version}" defer="defer"></script>
     
     EOM;

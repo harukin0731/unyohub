@@ -1,5 +1,6 @@
 <?php
 include "user_common.php";
+unyohub_require_email_enabled($main_config);
 
 print_header("メールアドレスの変更");
 
