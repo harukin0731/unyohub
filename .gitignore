@@ -1,0 +1,27 @@
+# インスタンス固有の路線データ・実行時データベース
+/unyohub/data/*
+/unyohub/libs_data/
+/unyohub/common_dbs/
+/unyohub_gui_tools/config.json
+
+# Pythonのキャッシュ・仮想環境
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ローカル環境変数（設定サンプルは管理対象）
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# エディター・OSの一時ファイル
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
