@@ -24,6 +24,8 @@ define("UNYOHUB_LICENSE_TEXT", "このアプリケーションは無権利創作
 
 include "./version.php";
 
+header("Cache-Control: no-cache");
+
 
 define("MANIFEST_PATH", "config/app_manifest.json");
 

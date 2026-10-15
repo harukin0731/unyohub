@@ -3919,7 +3919,120 @@ function show_about () {
 }
 
 
-function reload_app (force_update = false) {
+function with_timeout (promise, timeout_ms, message) {
+    var timer;
+    return Promise.race([
+        promise,
+        new Promise(function (_, reject) {
+            timer = setTimeout(function () { reject(new Error(message)); }, timeout_ms);
+        })
+    ]).finally(function () {
+        clearTimeout(timer);
+    });
+}
+
+function wait_for_state (target, event_name, is_ready, timeout_ms, message) {
+    var listener;
+    return with_timeout(new Promise(function (resolve, reject) {
+        listener = function () {
+            try {
+                if (is_ready()) {
+                    resolve();
+                }
+            } catch (error) {
+                reject(error);
+            }
+        };
+        target.addEventListener(event_name, listener);
+        listener();
+    }), timeout_ms, message).finally(function () {
+        target.removeEventListener(event_name, listener);
+    });
+}
+
+function get_worker_version (worker) {
+    var channel = new MessageChannel();
+    var reply = new Promise(function (resolve) {
+        channel.port1.onmessage = function (evt) { resolve(evt.data); };
+    });
+    worker.postMessage({type: "GET_VERSION"}, [channel.port2]);
+    
+    return with_timeout(reply, 3000, "Service Worker version check timed out").finally(function () {
+        channel.port1.close();
+    });
+}
+
+var app_update_queue = Promise.resolve();
+
+// 自動同期と更新ボタンが同時に切り替えないよう直列化する
+function complete_app_update (expected_version) {
+    var result = app_update_queue.then(function () {
+        return run_app_update(expected_version);
+    });
+    app_update_queue = result.catch(function () {});
+    return result;
+}
+
+async function run_app_update (expected_version) {
+    if (!("serviceWorker" in navigator)) {
+        return;
+    }
+    
+    var registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+        throw new Error("Service Worker is not registered");
+    }
+    
+    await with_timeout(registration.update(), 15000, "Service Worker update check timed out");
+    
+    var pending = registration.installing || registration.waiting;
+    if (pending) {
+        await wait_for_state(pending, "statechange", function () {
+            if (pending.state === "redundant") {
+                throw new Error("Service Worker installation failed");
+            }
+            return pending.state !== "installing";
+        }, 45000, "Service Worker installation timed out");
+        
+        // 取得中にサーバーが別の版へ更新された場合は切り替えない
+        if (await get_worker_version(pending) !== expected_version) {
+            throw new Error("Service Worker release mismatch");
+        }
+        
+        var activated = wait_for_state(navigator.serviceWorker, "controllerchange", function () {
+            return navigator.serviceWorker.controller === pending;
+        }, 15000, "Service Worker activation timed out");
+        pending.postMessage({type: "SKIP_WAITING"});
+        await activated;
+    }
+    
+    var controller = navigator.serviceWorker.controller;
+    if (!registration.active || (controller && controller !== registration.active) || await get_worker_version(registration.active) !== expected_version) {
+        throw new Error("Service Worker release mismatch");
+    }
+}
+
+// 画面は新版なのに旧版のWorkerが制御を続け、オフライン時に旧版のHTMLが返る状態を解消する
+async function sync_app_worker () {
+    var controller = navigator.serviceWorker.controller;
+    if (!controller || !navigator.onLine) {
+        return;
+    }
+    
+    // 26.09-1以前のWorkerは版番号に応答しないため、不一致として扱う
+    var worker_version = await get_worker_version(controller).catch(function () { return null; });
+    if (worker_version !== UNYOHUB_VERSION) {
+        await complete_app_update(UNYOHUB_VERSION);
+    }
+}
+
+var app_update_in_progress = false;
+
+async function reload_app (force_update = false) {
+    if (app_update_in_progress) {
+        return;
+    }
+    
     if (force_update && !navigator.onLine) {
         mes("端末をネットワークに接続してください", true);
         return;
@@ -3928,7 +4041,17 @@ function reload_app (force_update = false) {
     open_wait_screen();
     
     if (force_update) {
-        history.pushState(null, "", "/?ts=" + Date.now());
+        app_update_in_progress = true;
+        try {
+            await complete_app_update(instance_info["unyohub_version"]);
+        } catch (error) {
+            app_update_in_progress = false;
+            close_wait_screen();
+            console.error("App update failed", error);
+            mes("更新を完了できませんでした。通信状態を確認して再度お試しください", true);
+            return;
+        }
+        history.pushState(null, "", "/");
     } else if (location.pathname !== "/") {
         history.pushState(null, "", "/");
     }

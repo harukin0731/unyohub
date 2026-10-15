@@ -5731,5 +5731,18 @@ var history_back_resolve = null;
 
 
 if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("/service_worker.php");
+    // 旧版の更新ボタンが付けるキャッシュ回避用のパラメーターは不要
+    if (new URLSearchParams(location.search).has("ts")) {
+        history.replaceState(null, "", location.pathname + location.hash);
+    }
+    
+    navigator.serviceWorker.register("/service_worker.php").then(function () {
+        return funcs_load_promise.then(function () {
+            return sync_app_worker().catch(function (error) {
+                console.error("Service Worker update failed", error);
+            });
+        });
+    }).catch(function (error) {
+        console.error("Service Worker registration failed", error);
+    });
 }
